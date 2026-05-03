@@ -1,0 +1,16 @@
+services:
+  contacts-stats:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - CARDDAV_URL=${CARDDAV_URL}
+      - CARDDAV_USER=${CARDDAV_USER}
+      - CARDDAV_PASSWORD=${CARDDAV_PASSWORD}
+    volumes:
+      # Mount stats.json to persist it if needed, or to serve it
+      - ./stats.json:/app/stats.json
+      # Mount a local VCF file if using VCF mode
+      - ./contacts.vcf:/app/contacts.vcf
+    env_file:
+      - .env

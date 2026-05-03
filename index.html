@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contacts Statistics</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background: #f4f4f9; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #333; text-align: center; }
+        #map { height: 500px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 30px; }
+        .stats-container { display: flex; gap: 20px; flex-wrap: wrap; }
+        .card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); flex: 1; min-width: 300px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #eee; }
+        th { background: #f8f8f8; }
+        .info { padding: 6px 8px; font: 14px/16px Arial, Helvetica, sans-serif; background: white; background: rgba(255,255,255,0.8); box-shadow: 0 0 15px rgba(0,0,0,0.2); border-radius: 5px; }
+        .info h4 { margin: 0 0 5px; color: #777; }
+        .legend { line-height: 18px; color: #555; }
+        .legend i { width: 18px; height: 18px; float: left; margin-right: 8px; opacity: 0.7; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Contacts Geography</h1>
+        <div id="map"></div>
+        
+        <div class="stats-container">
+            <div class="card">
+                <h2>Area Statistics</h2>
+                <table id="statsTable">
+                    <thead>
+                        <tr>
+                            <th>Area</th>
+                            <th>Count</th>
+                            <th>Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map').setView([20, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        let statsData = null;
+
+        async function init() {
+            const response = await fetch('stats.json');
+            statsData = await response.json();
+            
+            updateTable();
+            await loadMap();
+        }
+
+        function updateTable() {
+            const tbody = document.querySelector('#statsTable tbody');
+            const sorted = statsData.detailed.sort((a, b) => b.count - a.count);
+            
+            sorted.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${item.area}</td>
+                    <td>${item.count}</td>
+                    <td>${item.pct.toFixed(1)}%</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function getColor(d) {
+            return d > 20 ? '#800026' :
+                   d > 10 ? '#BD0026' :
+                   d > 5  ? '#E31A1C' :
+                   d > 2  ? '#FC4E2A' :
+                   d > 1  ? '#FD8D3C' :
+                   d > 0  ? '#FEB24C' :
+                            '#FFEDA0';
+        }
+
+        async function loadMap() {
+            // Load World Countries
+            const worldRes = await fetch('https://raw.githubusercontent.com/datasets/geo-boundaries-world-110m/master/countries.geojson');
+            const worldData = await worldRes.json();
+
+            L.geoJson(worldData, {
+                style: function(feature) {
+                    const count = statsData.countries[feature.properties.iso_a2] || 0;
+                    return {
+                        fillColor: getColor(count),
+                        weight: 1,
+                        opacity: 1,
+                        color: 'white',
+                        fillOpacity: 0.7
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    const count = statsData.countries[feature.properties.iso_a2] || 0;
+                    layer.bindPopup(`<b>${feature.properties.admin}</b><br>${count} contacts`);
+                }
+            }).addTo(map);
+
+            // US State Name to Code Mapping
+            const usStateCodes = {
+                "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA",
+                "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE", "District of Columbia": "DC",
+                "Florida": "FL", "Georgia": "GA", "Hawaii": "HI", "Idaho": "ID", "Illinois": "IL",
+                "Indiana": "IN", "Iowa": "IA", "Kansas": "KS", "Kentucky": "KY", "Louisiana": "LA",
+                "Maine": "ME", "Maryland": "MD", "Massachusetts": "MA", "Michigan": "MI", "Minnesota": "MN",
+                "Mississippi": "MS", "Missouri": "MO", "Montana": "MT", "Nebraska": "NE", "Nevada": "NV",
+                "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM", "New York": "NY",
+                "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK", "Oregon": "OR",
+                "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC", "South Dakota": "SD",
+                "Tennessee": "TN", "Texas": "TX", "Utah": "UT", "Vermont": "VT", "Virginia": "VA",
+                "Washington": "WA", "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY"
+            };
+
+            // Load US States for finer detail
+            const usRes = await fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json');
+            const usData = await usRes.json();
+
+            L.geoJson(usData, {
+                style: function(feature) {
+                    const stateCode = usStateCodes[feature.properties.name];
+                    const code = stateCode ? "US-" + stateCode : "UNKNOWN";
+                    const count = statsData.subdivisions[code] || 0;
+                    if (count === 0) return { opacity: 0, fillOpacity: 0 };
+                    return {
+                        fillColor: getColor(count),
+                        weight: 1,
+                        opacity: 1,
+                        color: 'white',
+                        fillOpacity: 0.9
+                    };
+                },
+                onEachFeature: function(feature, layer) {
+                    const stateCode = usStateCodes[feature.properties.name];
+                    const code = stateCode ? "US-" + stateCode : "UNKNOWN";
+                    const count = statsData.subdivisions[code] || 0;
+                    if (count > 0) {
+                        layer.bindPopup(`<b>${feature.properties.name}</b><br>${count} contacts`);
+                    }
+                }
+            }).addTo(map);
+        }
+
+        init();
+    </script>
+</body>
+</html>
